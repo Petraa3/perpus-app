@@ -141,12 +141,112 @@ Ikuti berurutan. Lanjut ke langkah berikutnya hanya kalau pengecekan (✅) sudah
    ✅ Halaman sambutan Laravel tampil. Biarkan terminal ini terbuka dan pakai terminal kedua untuk perintah lain.
 8. **Buat model + migration + controller**: `php artisan make:model Produk -mc`.
    ✅ Muncul `app/Models/Produk.php`, `database/migrations/..._create_produks_table.php`, `app/Http/Controllers/ProdukController.php`.
-9. **Isi migration** dengan kolom yang dibutuhkan, lalu `php artisan migrate`.
-   ✅ Tabel baru muncul di phpMyAdmin.
-10. **Isi `$fillable`** di model.
-11. **Isi data** lewat `php artisan tinker` dengan `App\Models\Produk::create([...])`.
-    ✅ `App\Models\Produk::count()` sesuai jumlah data.
-12. **Tulis controller, route, dan view** (lihat bagian 4), lalu buka URL halamannya di browser.
+9. **Isi migration** `database/migrations/..._create_produks_table.php`. Tambahkan kolom di antara `$table->id();` dan `$table->timestamps();`:
+   ```php
+   Schema::create('produks', function (Blueprint $table) {
+       $table->id();
+       $table->string('nama');
+       $table->string('kategori');
+       $table->integer('harga');
+       $table->integer('stok')->default(0);
+       $table->text('deskripsi')->nullable();
+       $table->timestamps();
+   });
+   ```
+   Lalu jalankan di terminal kedua:
+   ```bash
+   php artisan migrate
+   ```
+   ✅ Tabel `produks` muncul di phpMyAdmin.
+10. **Isi `$fillable`** di `app/Models/Produk.php`:
+    ```php
+    class Produk extends Model
+    {
+        protected $fillable = ['nama', 'kategori', 'harga', 'stok', 'deskripsi'];
+    }
+    ```
+11. **Isi data contoh** lewat Tinker:
+    ```bash
+    php artisan tinker
+    ```
+    ```php
+    App\Models\Produk::create(['nama' => 'Kopi Susu Gula Aren', 'kategori' => 'Kopi', 'harga' => 18000, 'stok' => 25]);
+    App\Models\Produk::create(['nama' => 'Americano', 'kategori' => 'Kopi', 'harga' => 20000, 'stok' => 8]);
+    App\Models\Produk::create(['nama' => 'Cappuccino', 'kategori' => 'Kopi', 'harga' => 25000, 'stok' => 0]);
+    App\Models\Produk::create(['nama' => 'Matcha Latte', 'kategori' => 'Non-Kopi', 'harga' => 24000, 'stok' => 12]);
+    App\Models\Produk::create(['nama' => 'Coklat Panas', 'kategori' => 'Non-Kopi', 'harga' => 22000, 'stok' => 15]);
+    App\Models\Produk::count();
+    exit
+    ```
+    ✅ `count()` menghasilkan `5`.
+12. **Tulis controller** `app/Http/Controllers/ProdukController.php`:
+    ```php
+    <?php
+
+    namespace App\Http\Controllers;
+
+    use App\Models\Produk;   // wajib, supaya "Produk" dikenali
+
+    class ProdukController extends Controller
+    {
+        public function index()
+        {
+            $produks = Produk::orderBy('nama')->get();
+            return view('produk.index', ['produks' => $produks]);
+        }
+    }
+    ```
+13. **Tambahkan route** di `routes/web.php`. Baris `use` di bagian atas, di bawah `use` yang sudah ada:
+    ```php
+    use App\Http\Controllers\ProdukController;
+    ```
+    Lalu di bagian bawah file:
+    ```php
+    Route::get('/produk', [ProdukController::class, 'index']);
+    ```
+14. **Buat view**: buat folder `resources/views/produk/`, lalu file `index.blade.php` di dalamnya. Lokasinya harus di situ karena controller memanggil `view('produk.index')`, dan titik berarti folder.
+    ```html
+    <h1>Katalog Produk</h1>
+
+    <table border="1" cellpadding="8">
+        <tr>
+            <th>No</th>
+            <th>Nama</th>
+            <th>Kategori</th>
+            <th>Harga</th>
+            <th>Stok</th>
+            <th>Status</th>
+        </tr>
+        @foreach ($produks as $produk)
+        <tr>
+            <td>{{ $loop->iteration }}</td>
+            <td>{{ $produk->nama }}</td>
+            <td>{{ $produk->kategori }}</td>
+            <td>{{ 'Rp ' . number_format($produk->harga, 0, ',', '.') }}</td>
+            <td>{{ $produk->stok }}</td>
+            <td>
+                @if ($produk->stok > 0)
+                    Tersedia
+                @else
+                    Habis
+                @endif
+            </td>
+        </tr>
+        @endforeach
+    </table>
+    ```
+15. **Tes** di browser: `http://127.0.0.1:8000/produk`.
+    ✅ Tabel produk tampil, harga berformat `Rp 18.000`, dan produk berstok 0 berstatus `Habis`.
+
+Satu nama mengalir melewati semua file. Kalau satu saja tidak cocok, muncul error:
+
+| Di mana | Ditulis sebagai |
+| --- | --- |
+| Route | `[ProdukController::class, 'index']` |
+| Controller | `public function index()` |
+| Controller ke view | `view('produk.index', ['produks' => $produks])` |
+| Lokasi file view | `resources/views/produk/index.blade.php` |
+| Di dalam view | `@foreach ($produks as $produk)` |
 
 | Perintah | Fungsi |
 | --- | --- |
