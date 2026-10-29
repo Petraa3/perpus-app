@@ -57,8 +57,6 @@ Buka `http://127.0.0.1:8000/buku`.
 
 ---
 
-# Panduan: Laravel dari Nol sampai Integrasi Gemini AI
-
 ## 1. Gambaran besar
 
 Setiap fitur Laravel mengikuti satu alur: **Route → Controller → Model → View**. Kuasai alur ini, maka detail kodenya bisa dicari di dokumentasi.
