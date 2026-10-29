@@ -415,10 +415,18 @@ GEMINI_API_KEY=isi_key_anda
 GEMINI_MODEL=nama_model_lite_yang_kemarin_berhasil
 
 php artisan config:clear
+
 Cek apakah sudah terbaca, di Tinker:
 
 php artisan tinker
+
 config('services.gemini.model');
+
+cek di tinker
+
+Http::withHeaders(['x-goog-api-key' => config('services.gemini.key')])->post("https://generativelanguage.googleapis.com/v1beta/models/" . config('services.gemini.mo
+del') . ":generateContent", ['contents' => [['parts' => [['text' => 'Halo, jawab singkat']]]]])->body() 
+
 
 **Controller** (`app/Http/Controllers/ChatController.php`):
 
