@@ -57,6 +57,8 @@ Buka `http://127.0.0.1:8000/buku`.
 
 ---
 
+# Panduan: Laravel dari Nol sampai Integrasi Gemini AI
+
 ## 1. Gambaran besar
 
 Setiap fitur Laravel mengikuti satu alur: **Route → Controller → Model → View**. Kuasai alur ini, maka detail kodenya bisa dicari di dokumentasi.
@@ -599,6 +601,371 @@ Konsep penting:
 - **Prepared statement / Eloquent**: mencegah SQL injection.
 - **`{{ }}` di Blade**: mencegah XSS. **`@csrf`**: mencegah form palsu.
 - **API key di `.env`**: tidak ikut ke GitHub dan bisa diganti tanpa mengubah kode.
+
+## 11. Studi kasus: Toko Kopi (katalog + CS AI)
+
+Latihan lengkap yang menggabungkan semua bagian di atas: katalog produk, form tambah produk, chatbot CS berbasis data produk, dan endpoint JSON untuk bot WhatsApp/Telegram.
+
+### Tahap 1: Setup dan katalog produk
+
+Ikuti langkah 1–15 di bagian 3. Hasilnya halaman `/produk` berisi tabel No, Nama, Kategori, Harga (`Rp 18.000`), Stok, dan Status.
+
+### Tahap 2: Form tambah produk
+
+Tidak perlu model atau migration baru. Cukup 2 method, 2 route, 1 view baru, lalu ubah sedikit view daftar.
+
+**Controller** `app/Http/Controllers/ProdukController.php`:
+
+```php
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Produk;
+use Illuminate\Http\Request;
+
+class ProdukController extends Controller
+{
+    public function index()
+    {
+        $produks = Produk::orderBy('nama')->get();
+        return view('produk.index', ['produks' => $produks]);
+    }
+
+    // Menampilkan form
+    public function create()
+    {
+        return view('produk.create');
+    }
+
+    // Menyimpan data dari form
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'nama'      => 'required|string|max:100',
+            'kategori'  => 'required|in:Kopi,Non-Kopi',
+            'harga'     => 'required|integer|min:0',
+            'stok'      => 'required|integer|min:0',
+            'deskripsi' => 'nullable|string|max:500',
+        ]);
+
+        Produk::create($data);
+
+        return redirect('/produk')->with('sukses', 'Produk berhasil ditambahkan');
+    }
+}
+```
+
+`in:Kopi,Non-Kopi` membatasi kategori hanya pada dua nilai itu. Walaupun form memakai `<select>`, validasi di server tetap wajib, karena data dari browser bisa diubah (misalnya lewat Inspect Element).
+
+**Route** di `routes/web.php`, di bawah route `/produk`:
+
+```php
+Route::get('/produk/tambah', [ProdukController::class, 'create']);
+Route::post('/produk', [ProdukController::class, 'store']);
+```
+
+**View form** `resources/views/produk/create.blade.php`:
+
+```html
+<h1>Tambah Produk</h1>
+
+@if ($errors->any())
+    <ul style="color:red">
+        @foreach ($errors->all() as $error)
+            <li>{{ $error }}</li>
+        @endforeach
+    </ul>
+@endif
+
+<form method="POST" action="/produk">
+    @csrf
+
+    <p>Nama:
+        <input name="nama" value="{{ old('nama') }}">
+    </p>
+
+    <p>Kategori:
+        <select name="kategori">
+            <option value="">-- Pilih kategori --</option>
+            <option value="Kopi" @selected(old('kategori') === 'Kopi')>Kopi</option>
+            <option value="Non-Kopi" @selected(old('kategori') === 'Non-Kopi')>Non-Kopi</option>
+        </select>
+    </p>
+
+    <p>Harga:
+        <input name="harga" type="number" value="{{ old('harga') }}">
+    </p>
+
+    <p>Stok:
+        <input name="stok" type="number" value="{{ old('stok', 0) }}">
+    </p>
+
+    <p>Deskripsi:
+        <textarea name="deskripsi">{{ old('deskripsi') }}</textarea>
+    </p>
+
+    <button type="submit">Simpan</button>
+    <a href="/produk">Batal</a>
+</form>
+```
+
+`@selected(...)` menulis atribut `selected` kalau kondisinya benar, sehingga pilihan kategori tidak hilang saat validasi gagal.
+
+**Ubah view daftar** `resources/views/produk/index.blade.php`, tambahkan di bawah `<h1>`:
+
+```html
+@if (session('sukses'))
+    <p style="color:green">{{ session('sukses') }}</p>
+@endif
+
+<a href="/produk/tambah">+ Tambah Produk</a>
+```
+
+**Uji tahap 2:**
+
+| Yang dicoba | Hasil yang benar |
+| --- | --- |
+| Isi lengkap, simpan | Kembali ke `/produk`, pesan hijau, produk baru muncul |
+| Nama kosong | Pesan error merah, isian lain tidak hilang |
+| Harga `-5000` | Error: harga minimal 0 |
+| Kategori tidak dipilih | Error: kategori wajib |
+
+### Tahap 3: Chatbot CS dan endpoint JSON
+
+**1. API key dan konfigurasi.** Di bagian bawah `.env`:
+
+```
+GEMINI_API_KEY=isi_key_anda
+GEMINI_MODEL=nama_model_yang_tersedia
+```
+
+Di `config/services.php`, di dalam `return [ ... ];`:
+
+```php
+'gemini' => [
+    'key'   => env('GEMINI_API_KEY'),
+    'model' => env('GEMINI_MODEL'),
+],
+```
+
+Lalu `php artisan config:clear` dan restart `php artisan serve`.
+
+**2. Tabel riwayat chat:**
+
+```bash
+php artisan make:model Chat -m
+```
+
+Migration `..._create_chats_table.php`:
+
+```php
+Schema::create('chats', function (Blueprint $table) {
+    $table->id();
+    $table->text('pesan');
+    $table->text('balasan')->nullable();
+    $table->timestamps();
+});
+```
+
+Jalankan `php artisan migrate`, lalu di `app/Models/Chat.php`:
+
+```php
+protected $fillable = ['pesan', 'balasan'];
+```
+
+**3. Controller:**
+
+```bash
+php artisan make:controller CsController
+```
+
+`app/Http/Controllers/CsController.php`:
+
+```php
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Chat;
+use App\Models\Produk;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+
+class CsController extends Controller
+{
+    // Halaman chat + riwayat
+    public function index()
+    {
+        $chats = Chat::latest()->take(20)->get()->reverse();
+        return view('cs.index', ['chats' => $chats]);
+    }
+
+    // Kirim pertanyaan dari form web
+    public function kirim(Request $request)
+    {
+        $data = $request->validate([
+            'pesan' => 'required|string|max:1000',
+        ]);
+
+        $balasan = $this->tanyaAI($data['pesan']);
+
+        if ($balasan === null) {
+            return back()->with('error', 'Maaf, CS AI sedang tidak bisa dihubungi. Coba lagi nanti.');
+        }
+
+        Chat::create([
+            'pesan'   => $data['pesan'],
+            'balasan' => $balasan,
+        ]);
+
+        return redirect('/cs');
+    }
+
+    // Endpoint JSON, simulasi untuk bot WhatsApp/Telegram
+    public function api(Request $request)
+    {
+        $pesan = $request->query('pesan');
+
+        if (empty($pesan)) {
+            return response()->json(['error' => 'Parameter pesan wajib diisi'], 422);
+        }
+
+        $balasan = $this->tanyaAI($pesan);
+
+        if ($balasan === null) {
+            return response()->json(['error' => 'AI sedang tidak tersedia'], 503);
+        }
+
+        return response()->json([
+            'pesan'   => $pesan,
+            'balasan' => $balasan,
+        ]);
+    }
+
+    // Logika AI, dipakai bersama oleh web dan API
+    private function tanyaAI(string $pesan): ?string
+    {
+        // 1. RAG sederhana: data produk dari database jadi teks
+        $daftarProduk = Produk::orderBy('kategori')->get()->map(function ($p) {
+            $harga  = 'Rp ' . number_format($p->harga, 0, ',', '.');
+            $status = $p->stok > 0 ? "stok {$p->stok}" : 'stok habis';
+            return "- {$p->nama} ({$p->kategori}), {$harga}, {$status}";
+        })->implode("\n");
+
+        $instruksi = "Kamu adalah customer service Toko Kopi. Jawab sopan dalam bahasa Indonesia, maksimal 3 kalimat.
+Jika ditanya hal di luar produk dan toko kopi, tolak dengan halus lalu arahkan kembali ke menu.
+Daftar produk:
+{$daftarProduk}
+
+Jawab HANYA berdasarkan daftar produk di atas. Jika produk tidak ada di daftar, katakan jujur bahwa produk itu tidak tersedia.";
+
+        // 2. Panggil Gemini
+        $model = config('services.gemini.model');
+
+        try {
+            $response = Http::withHeaders([
+                'x-goog-api-key' => config('services.gemini.key'),
+            ])->timeout(60)->post(
+                "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent",
+                [
+                    'system_instruction' => ['parts' => [['text' => $instruksi]]],
+                    'contents' => [
+                        ['role' => 'user', 'parts' => [['text' => $pesan]]],
+                    ],
+                ]
+            );
+        } catch (\Exception $e) {
+            logger()->error('Gagal terhubung ke Gemini: ' . $e->getMessage());
+            return null;
+        }
+
+        // 3. Tangani error dari API
+        if ($response->failed()) {
+            logger()->error('Gemini ' . $response->status() . ': ' . $response->body());
+            return null;
+        }
+
+        // 4. Ambil teks jawaban (dengan cadangan kalau kosong)
+        return $response->json('candidates.0.content.parts.0.text')
+            ?? 'Maaf, saya tidak bisa menjawab pertanyaan itu.';
+    }
+}
+```
+
+Logika AI dipisah ke `tanyaAI()` karena dipakai oleh dua pintu masuk: halaman web `/cs` dan endpoint JSON `/api/tanya`. Perubahan prompt cukup dilakukan di satu tempat (prinsip DRY). Tipe `?string` berarti method mengembalikan teks atau `null`, dan `null` menjadi tanda bahwa AI gagal, sehingga web dan API bisa menampilkan error dengan caranya masing-masing.
+
+**4. Route** di `routes/web.php`:
+
+```php
+use App\Http\Controllers\CsController;
+
+Route::get('/cs', [CsController::class, 'index']);
+Route::post('/cs', [CsController::class, 'kirim']);
+Route::get('/api/tanya', [CsController::class, 'api']);
+```
+
+`/api/tanya` diletakkan di `web.php` dengan metode GET supaya bisa dites langsung dari browser. Di aplikasi sungguhan, endpoint untuk bot biasanya ada di `routes/api.php` (aktifkan dengan `php artisan install:api`) dan menerima POST dari webhook.
+
+**5. View** `resources/views/cs/index.blade.php`:
+
+```html
+<h1>CS Toko Kopi</h1>
+
+@if (session('error'))
+    <p style="color:red">{{ session('error') }}</p>
+@endif
+
+@forelse ($chats as $chat)
+    <p><b>Anda:</b> {{ $chat->pesan }}</p>
+    <p><b>CS:</b> {{ $chat->balasan }}</p>
+    <hr>
+@empty
+    <p>Belum ada percakapan. Silakan bertanya tentang menu kami.</p>
+@endforelse
+
+<form method="POST" action="/cs">
+    @csrf
+    <input name="pesan" value="{{ old('pesan') }}" placeholder="Tulis pertanyaan..." style="width:300px" required>
+    <button type="submit">Kirim</button>
+    @error('pesan')
+        <p style="color:red">{{ $message }}</p>
+    @enderror
+</form>
+
+<p><a href="/produk">Lihat katalog produk</a></p>
+```
+
+`@forelse ... @empty ... @endforelse` bekerja seperti `@foreach`, dengan bagian `@empty` yang tampil saat data kosong.
+
+**Uji tahap 3** di `/cs`:
+
+| Pertanyaan | Jawaban yang benar |
+| --- | --- |
+| "Ada kopi apa saja dan berapa harganya?" | Kopi dari database beserta harganya |
+| "Produk yang paling murah apa?" | Sesuai data (contoh: Kopi Susu Gula Aren, Rp 18.000) |
+| "Ada matcha latte?" | Ada, dengan harga dan stok sesuai database |
+| "Ada es teh?" | Tidak tersedia, tanpa mengarang |
+| "Bagaimana cuaca hari ini?" | Ditolak halus, kembali ke menu |
+| Tambah produk lewat form, lalu tanyakan | CS langsung tahu |
+
+**Uji endpoint JSON** di browser:
+
+```
+http://127.0.0.1:8000/api/tanya?pesan=ada kopi apa saja
+```
+
+Hasilnya:
+
+```json
+{"pesan":"ada kopi apa saja","balasan":"Kami punya Americano ..."}
+```
+
+Tanpa `?pesan=`, hasilnya JSON error dengan status 422.
+
+### Ringkasan untuk dijelaskan
+
+> Katalog produk memakai CRUD Laravel dengan validasi di server. Chatbot mengambil data produk dari database dan menyisipkannya ke system instruction Gemini, sehingga AI menjawab berdasarkan data nyata dan tidak mengarang. Logika AI ada di satu method yang dipakai halaman web dan endpoint JSON; endpoint JSON itulah yang nanti dipanggil webhook WhatsApp atau Telegram. API key disimpan di `.env`, dan saat API gagal atau timeout, pengguna melihat pesan ramah sementara detail error dicatat di log.
 
 ## Lisensi
 
