@@ -396,7 +396,6 @@ Integrasi AI adalah lima langkah dalam satu method controller: validasi, kirim r
     'model' => env('GEMINI_MODEL'),
 ],
 ```
-
 Cek di Tinker: `config('services.gemini.model')` tidak boleh `null`.
 
 **Mencari nama model** yang tersedia untuk key Anda (di Tinker):
@@ -410,6 +409,16 @@ collect(Http::withHeaders(['x-goog-api-key' => config('services.gemini.key')])
 ```
 
 Pilih model `lite` atau `flash` yang cepat, isi namanya tanpa awalan `models/`.
+
+buat di .env:
+GEMINI_API_KEY=isi_key_anda
+GEMINI_MODEL=nama_model_lite_yang_kemarin_berhasil
+
+php artisan config:clear
+Cek apakah sudah terbaca, di Tinker:
+
+php artisan tinker
+config('services.gemini.model');
 
 **Controller** (`app/Http/Controllers/ChatController.php`):
 
