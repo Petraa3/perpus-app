@@ -108,19 +108,45 @@ Catatan dari pengalaman setup:
 
 ## 3. Membuat proyek dan menghubungkan MySQL
 
-```bash
-cd C:\laragon\www
-composer create-project laravel/laravel nama-app
-cd nama-app
-```
+Ikuti berurutan. Lanjut ke langkah berikutnya hanya kalau pengecekan (✅) sudah sesuai.
 
-Buat database di phpMyAdmin: `CREATE DATABASE nama_app;`, lalu ubah `.env` (tanpa spasi di sekitar `=`), kemudian:
-
-```bash
-php artisan config:clear
-php artisan migrate
-php artisan serve
-```
+1. **Nyalakan Laragon**: Start All, tutup pop-up lisensi.
+   ✅ Apache dan MySQL menyala.
+2. **Buat proyek** di terminal:
+   ```bash
+   cd C:\laragon\www
+   composer create-project laravel/laravel nama-app
+   cd nama-app
+   ```
+   ✅ Selesai tanpa error, folder `nama-app` ada.
+3. **Buat database** di phpMyAdmin, tab SQL: `CREATE DATABASE nama_app;`
+   ✅ Database muncul di daftar kiri.
+4. **Buka proyek di VS Code**: File → Open Folder → `C:\laragon\www\nama-app`.
+5. **Ubah `.env`**: ganti `DB_CONNECTION=sqlite` menjadi `mysql`, hapus `#` di depan baris `DB_` lainnya, tanpa spasi di sekitar `=`, lalu simpan:
+   ```
+   DB_CONNECTION=mysql
+   DB_HOST=127.0.0.1
+   DB_PORT=3306
+   DB_DATABASE=nama_app
+   DB_USERNAME=root
+   DB_PASSWORD=
+   ```
+6. **Buat tabel bawaan**:
+   ```bash
+   php artisan config:clear
+   php artisan migrate
+   ```
+   ✅ Muncul `Running migrations` dan beberapa `DONE`; tabel `users`, `sessions`, `cache` ada di phpMyAdmin. Kalau ditanya membuat database, jawab `yes`.
+7. **Jalankan server**: `php artisan serve`, buka `http://127.0.0.1:8000`.
+   ✅ Halaman sambutan Laravel tampil. Biarkan terminal ini terbuka dan pakai terminal kedua untuk perintah lain.
+8. **Buat model + migration + controller**: `php artisan make:model Produk -mc`.
+   ✅ Muncul `app/Models/Produk.php`, `database/migrations/..._create_produks_table.php`, `app/Http/Controllers/ProdukController.php`.
+9. **Isi migration** dengan kolom yang dibutuhkan, lalu `php artisan migrate`.
+   ✅ Tabel baru muncul di phpMyAdmin.
+10. **Isi `$fillable`** di model.
+11. **Isi data** lewat `php artisan tinker` dengan `App\Models\Produk::create([...])`.
+    ✅ `App\Models\Produk::count()` sesuai jumlah data.
+12. **Tulis controller, route, dan view** (lihat bagian 4), lalu buka URL halamannya di browser.
 
 | Perintah | Fungsi |
 | --- | --- |
